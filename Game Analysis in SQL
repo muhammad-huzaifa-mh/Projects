@@ -1,0 +1,105 @@
+/* Extract `P_ID`, `Dev_ID`, `PName`, and `Difficulty_level` of all players
+at Level 0. */
+
+Select pd.P_ID , ld.Dev_ID , pd.PName , ld.Difficulty as Difficulty_Level
+from player_details pd
+Join level_details2 ld ON pd.P_ID = ld.P_ID
+where ld.Level > 0;
+
+/* Find the total number of stages crossed at each difficulty level for 
+Level 2 with players. */
+
+SELECT difficulty, SUM(stages_crossed) AS total_stages_crossed
+FROM Level_Details2
+WHERE level = 2
+GROUP BY difficulty;
+
+/* Extract P_ID and the total number of unique dates for those players 
+who have played games on multiple days. */
+
+SELECT P_ID, COUNT(DISTINCT DATE(timestamp)) AS total_unique_dates
+FROM Level_Details2
+GROUP BY P_ID
+HAVING COUNT(DISTINCT DATE(timestamp)) > 1;
+
+/* Find P_ID and levelwise sum of kill_counts where kill_count is greater than
+the average kill count for Medium difficulty. */
+
+SELECT P_ID, level, SUM(kill_count) AS total_kill_count
+FROM Level_Details2
+WHERE kill_count > 
+	(SELECT AVG(kill_count) FROM Level_Details2 WHERE difficulty = 'Medium')
+GROUP BY P_ID, level;
+
+/* Find Level and its corresponding Level_code wise sum of lives earned,
+excluding Level 0. Arrange in ascending order of level. */
+
+SELECT level, SUM(lives_earned) AS total_lives_earned
+FROM Level_Details2
+WHERE level > 0
+GROUP BY level
+ORDER BY level ASC;
+
+/* Find the first_login datetime for each device ID. */
+
+SELECT Dev_ID, MIN(timestamp) AS first_login
+FROM Level_Details2
+GROUP BY Dev_ID;
+
+/* Find the device ID that is first logged in (based on start_datetime) for 
+each player (P_ID). Output should contain player ID, device ID, and first 
+login datetime. */
+
+WITH FirstLogin AS (
+    SELECT P_ID, Dev_ID, MIN(timestamp) AS first_login
+    FROM Level_Details2
+    GROUP BY P_ID, Dev_ID
+)
+SELECT P_ID, Dev_ID, first_login
+FROM FirstLogin
+WHERE (P_ID, first_login) IN (
+    SELECT P_ID, MIN(first_login)
+    FROM FirstLogin
+    GROUP BY P_ID
+);
+
+/* Find the top 5 scores based on each difficulty level and rank them in
+increasing order using Rank. Display Dev_ID as well. */
+
+WITH TopScores AS (
+    SELECT Dev_ID, difficulty, score,
+           RANK() OVER(PARTITION BY difficulty ORDER BY score DESC) AS score_rank
+    FROM Level_Details2
+)
+SELECT Dev_ID, difficulty, score
+FROM TopScores
+WHERE score_rank <= 5;
+
+/* Find players who scored more than 50% of the average score, scored by the
+sum of scores for each P_ID. */
+
+WITH PlayerAverage AS (
+    SELECT P_ID, AVG(score) AS avg_score
+    FROM Level_Details2
+    GROUP BY P_ID
+)
+SELECT ld.P_ID, ld.score, pa.avg_score
+FROM Level_Details2 ld
+JOIN PlayerAverage pa ON ld.P_ID = pa.P_ID
+WHERE ld.score > 0.5 * pa.avg_score;
+
+/* For each player and date, determine how many kill_counts were played by the
+player so far. 
+a) Using window functions */
+
+SELECT P_ID, timestamp, SUM(kill_count) OVER (PARTITION BY P_ID ORDER BY timestamp) AS total_kill_counts
+FROM Level_Details2;
+
+/* b) Without window functions */
+
+SELECT P_ID, timestamp, (
+    SELECT SUM(kill_count)
+    FROM Level_Details2 ld2
+    WHERE ld2.P_ID = ld1.P_ID AND ld2.timestamp <= ld1.timestamp
+) AS total_kill_counts
+FROM Level_Details2 ld1;
